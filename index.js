@@ -1,54 +1,57 @@
 require("dotenv").config();
-const express = require('express');
-const mongoose=require('mongoose');
+const express = require("express");
+const mongoose = require("mongoose");
 const app = express();
-const PORT = process.env.PORT||5000;
-const https = require('https');
-const { GoogleGenerativeAI,HarmCategory,HarmBlockThreshold } = require("@google/generative-ai");
+const PORT = process.env.PORT || 6000;
+const https = require("https");
+
+const {
+  GoogleGenerativeAI,
+  HarmCategory,
+  HarmBlockThreshold,
+} = require("@google/generative-ai");
 const bodyParser = require("body-parser");
 const APIkey = process.env.Geminiapikey;
 app.use(express.json());
 
-app.use(bodyParser.json({ limit: '50mb' }));
-app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
+app.use(bodyParser.json({ limit: "50mb" }));
+app.use(bodyParser.urlencoded({ limit: "50mb", extended: true }));
 
-mongoose.connect(process.env.Mongo_URI)
-.then((res)=>console.log("Connected to DB"))
-.catch((e)=>console.log(e));
+mongoose
+  .connect(process.env.Mongo_URI)
+  .then((res) => console.log("Connected to DB"))
+  .catch((e) => console.log(e));
 
 require("./models/imagedetails");
-const Imageschema=mongoose.model("Image_model");
+const Imageschema = mongoose.model("Image_model");
 
-const routes=require("./routes");
-app.use("/routes",routes);
+const routes = require("./routes");
+app.use("/routes", routes);
 
-
-          
-// IMAGE INPUT and TEXT INPUT----------------------------------------------------------------- 
+// IMAGE INPUT and TEXT INPUT-----------------------------------------------------------------
 
 async function functionToGetLastImage() {
   try {
-    
     const lastImage = await Imageschema.findOne().sort({ _id: -1 });
-    if(lastImage && lastImage.image){
-      return lastImage.image.toString('base64');
+    if (lastImage && lastImage.image) {
+      return lastImage.image.toString("base64");
     } else {
-      throw new Error('No image found');
+      throw new Error("No image found");
     }
   } catch (error) {
-    throw new Error('Error fetching last image: ' + error.message);
+    throw new Error("Error fetching last image: " + error.message);
   }
 }
 
-app.post('/generateText', async (req, res) => {
+app.post("/generateText", async (req, res) => {
   try {
     const { textInput } = req.body;
 
     if (!textInput) {
-      return res.status(400).json({ error: 'Text input is required.' });
+      return res.status(400).json({ error: "Text input is required." });
     }
 
-    const imageBase64 =  await functionToGetLastImage();
+    const imageBase64 = await functionToGetLastImage();
     console.log("photo base64");
 
     const requestData = JSON.stringify({
@@ -57,7 +60,7 @@ app.post('/generateText', async (req, res) => {
           parts: [
             {
               inlineData: {
-                mimeType: 'image/jpeg',
+                mimeType: "image/jpeg",
                 data: imageBase64,
               },
             },
@@ -67,26 +70,25 @@ app.post('/generateText', async (req, res) => {
           ],
         },
       ],
-      
     });
 
     const options = {
-      hostname: 'generativelanguage.googleapis.com',
+      hostname: "generativelanguage.googleapis.com",
       path: `/v1beta/models/gemini-pro-vision:generateContent?key=${APIkey}`,
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       },
     };
 
     const reqToGoogleAPI = https.request(options, (resFromGoogleAPI) => {
-      let responseData = '';
+      let responseData = "";
 
-      resFromGoogleAPI.on('data', (chunk) => {
+      resFromGoogleAPI.on("data", (chunk) => {
         responseData += chunk;
       });
 
-      resFromGoogleAPI.on('end', () => {
+      resFromGoogleAPI.on("end", () => {
         try {
           const responseObj = JSON.parse(responseData);
           if (
@@ -97,34 +99,35 @@ app.post('/generateText', async (req, res) => {
             responseObj.candidates[0].content.parts &&
             responseObj.candidates[0].content.parts.length > 0
           ) {
-            const generatedText = responseObj.candidates[0].content.parts[0].text;
-            console.log('Generated Text:', generatedText);
+            const generatedText =
+              responseObj.candidates[0].content.parts[0].text;
+            console.log("Generated Text:", generatedText);
             res.status(200).json({ generatedText }); // Send the generated text back to the client
           } else {
-            console.error('No valid response data found');
-            res.status(500).json({ error: 'No valid response data found' });
+            console.error("No valid response data found");
+            res.status(500).json({ error: "No valid response data found" });
           }
         } catch (error) {
-          console.error('Error parsing response:', error.message);
-          res.status(500).json({ error: 'Error parsing response' });
+          console.error("Error parsing response:", error.message);
+          res.status(500).json({ error: "Error parsing response" });
         }
       });
     });
 
-    reqToGoogleAPI.on('error', (error) => {
-      console.error('Error:', error.message);
-      res.status(500).json({ error: 'Error connecting to Google API' });
+    reqToGoogleAPI.on("error", (error) => {
+      console.error("Error:", error.message);
+      res.status(500).json({ error: "Error connecting to Google API" });
     });
 
     reqToGoogleAPI.write(requestData);
     reqToGoogleAPI.end();
   } catch (error) {
-    console.error('Error:', error.message);
-    res.status(500).json({ error: 'An error occurred while generating text from the image.' });
+    console.error("Error:", error.message);
+    res.status(500).json({
+      error: "An error occurred while generating text from the image.",
+    });
   }
 });
-  
-
 
 //Final MultiTurn chatting - TEXT only Input model------------------------------------------------------
 
@@ -132,10 +135,10 @@ const genAI = new GoogleGenerativeAI(APIkey);
 
 let chatHistory = [];
 
-app.post('/generatethetext', async (req, res) => {
+app.post("/generatethetext", async (req, res) => {
   try {
     let { history, userInput } = req.body;
-    console.log("User input: ",userInput);
+    console.log("User input: ", userInput);
 
     if (!Array.isArray(history)) {
       history = []; // Initialize history if not provided or not an array
@@ -179,30 +182,25 @@ app.post('/generatethetext', async (req, res) => {
     const result = await chat.sendMessageStream(userInput);
     const response = await result.response;
     const text = response.text();
-    console.log("model: ",text);
+    console.log("model: ", text);
 
-    // Update chat history 
-    chatHistory.push({ role: 'user', parts: userInput });
-    chatHistory.push({ role: 'model', parts: text });
+    // Update chat history
+    chatHistory.push({ role: "user", parts: userInput });
+    chatHistory.push({ role: "model", parts: text });
 
     res.json({ generatedText: text, updatedHistory: chatHistory });
   } catch (error) {
-    console.error('Error:', error.message);
-    res.status(500).json({ error: 'An error occurred while generating text.' });
+    console.error("Error:", error.message);
+    res.status(500).json({ error: "An error occurred while generating text." });
   }
 });
 
+app.listen(PORT, () => {
+  console.log(`Server is running on port ${PORT}`);
 
-    app.listen(PORT, () => {
-      console.log(`Server is running on port ${PORT}`);
-    });
-                                 
-                                  
-
-
-
-
-
-
-
-
+  // Send a response when the server is running
+  app.get("/", (req, res) => {
+    res.write("I'm alive");
+    res.end();
+  });
+});
